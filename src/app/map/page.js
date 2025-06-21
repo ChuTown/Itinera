@@ -1,12 +1,15 @@
 "use client"
 
-import React, { useState, useMemo, useRef } from 'react'
-import { GoogleMap, useJsApiLoader } from '@react-google-maps/api'
+import React, { useState, useMemo, useRef, useEffect } from 'react'
+import { GoogleMap, useJsApiLoader, DirectionsRenderer } from '@react-google-maps/api'
 
 export default function RequestPage() {
     const [cities, setCities] = useState([])
     const [inputValue, setInputValue] = useState('')
+    const [directions, setDirections] = useState(null)
+    const [isCalculating, setIsCalculating] = useState(false)
     const autocompleteRef = useRef(null)
+    const directionsServiceRef = useRef(null)
 
     const containerStyle = {
         width: '100%',
@@ -36,6 +39,50 @@ export default function RequestPage() {
         setCities(newCities)
     }
 
+    const calculateOptimalRoute = async () => {
+        if (cities.length < 2) {
+            alert('Please add at least 2 places to calculate a route')
+            return
+        }
+
+        setIsCalculating(true)
+
+        try {
+            // Create waypoints from all cities except the first one
+            const waypoints = cities.slice(1).map(city => ({
+                location: city,
+                stopover: true
+            }))
+
+            const request = {
+                origin: cities[0],
+                destination: cities[cities.length - 1],
+                waypoints: waypoints,
+                optimizeWaypoints: true, // This enables route optimization
+                travelMode: window.google.maps.TravelMode.DRIVING
+            }
+
+            directionsServiceRef.current.route(request, (result, status) => {
+                setIsCalculating(false)
+                if (status === 'OK') {
+                    setDirections(result)
+                    console.log('Optimized route:', result)
+                } else {
+                    console.error('Directions request failed due to ' + status)
+                    alert('Failed to calculate route. Please check your place names.')
+                }
+            })
+        } catch (error) {
+            setIsCalculating(false)
+            console.error('Error calculating route:', error)
+            alert('Error calculating route. Please try again.')
+        }
+    }
+
+    const clearRoute = () => {
+        setDirections(null)
+    }
+
     const MyComponent = useMemo(() => {
         return function MapComponent() {
             const { isLoaded } = useJsApiLoader({
@@ -50,6 +97,7 @@ export default function RequestPage() {
                 const bounds = new window.google.maps.LatLngBounds(center);
                 map.fitBounds(bounds);
                 setMap(map);
+                directionsServiceRef.current = new window.google.maps.DirectionsService()
             }, []);
 
             const onUnmount = React.useCallback(function callback(map) {
@@ -80,17 +128,28 @@ export default function RequestPage() {
                     onLoad={onLoad}
                     onUnmount={onUnmount}
                     options={{
-                        zoomControl: true
+                        zoomControl: true,
+                        streetViewControl: false
                     }}
                 >
-                    {/* Child components, such as markers, info windows, etc. */}
-                    <></>
+                    {directions && (
+                        <DirectionsRenderer
+                            directions={directions}
+                            options={{
+                                suppressMarkers: false,
+                                polylineOptions: {
+                                    strokeColor: '#FF0000',
+                                    strokeWeight: 4
+                                }
+                            }}
+                        />
+                    )}
                 </GoogleMap>
             ) : (
                 <></>
             );
         }
-    }, []);
+    }, [directions]);
 
     return (
         <div style={{ display: 'flex', height: '100vh' }}>
@@ -147,6 +206,46 @@ export default function RequestPage() {
                         Add Place
                     </button>
                 </form>
+
+                {/* Route Controls */}
+                {cities.length >= 2 && (
+                    <div style={{ marginBottom: '20px' }}>
+                        <button
+                            onClick={calculateOptimalRoute}
+                            disabled={isCalculating}
+                            style={{
+                                backgroundColor: isCalculating ? '#6c757d' : '#28a745',
+                                color: 'white',
+                                padding: '10px 20px',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: isCalculating ? 'not-allowed' : 'pointer',
+                                fontSize: '14px',
+                                marginBottom: '10px',
+                                width: '100%'
+                            }}
+                        >
+                            {isCalculating ? 'Calculating...' : 'Calculate Optimal Route'}
+                        </button>
+                        {directions && (
+                            <button
+                                onClick={clearRoute}
+                                style={{
+                                    backgroundColor: '#dc3545',
+                                    color: 'white',
+                                    padding: '10px 20px',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    fontSize: '14px',
+                                    width: '100%'
+                                }}
+                            >
+                                Clear Route
+                            </button>
+                        )}
+                    </div>
+                )}
 
                 {/* Display added places */}
                 {cities.length > 0 && (
