@@ -9,7 +9,6 @@ export default function Header() {
     return (
         <nav className="flex justify-around items-center bg-black h-13 text-white">
           <Link href = '/'>Home</Link>
-          <Link href = '/about'>About</Link>
           <Link href = '/contact'>Contact</Link>
         </nav>
     );
