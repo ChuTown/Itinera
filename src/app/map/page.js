@@ -104,8 +104,6 @@ export default function RequestPage() {
             const [map, setMap] = React.useState(null);
 
             const onLoad = React.useCallback(function callback(map) {
-                const bounds = new window.google.maps.LatLngBounds(center);
-                map.fitBounds(bounds);
                 setMap(map);
                 directionsServiceRef.current = new window.google.maps.DirectionsService()
             }, []);
@@ -164,7 +162,7 @@ export default function RequestPage() {
                 <GoogleMap
                     mapContainerStyle={containerStyle}
                     center={center}
-                    zoom={10}
+                    zoom={8}
                     onLoad={onLoad}
                     onUnmount={onUnmount}
                     options={{
@@ -239,81 +237,22 @@ export default function RequestPage() {
 
                 {sidebarTab === 'route' && (
                     <>
-                    {/* Starting Point */}
-                    <div style={{ marginBottom: '15px' }}>
-                        <label htmlFor="start-input" style={{
-                            display: 'block',
-                            marginBottom: '5px',
-                            fontWeight: 'bold',
-                            color: '#555'
-                        }}>
-                            Starting Point:
-                        </label>
-                        <input
-                            id="start-input"
-                            type="text"
-                            value={startPoint}
-                            onChange={(e) => setStartPoint(e.target.value)}
-                            placeholder="Enter starting location..."
-                            autoComplete="on"
-                            style={{
-                                width: '100%',
-                                padding: '10px',
-                                border: '1px solid #ccc',
-                                borderRadius: '4px',
-                                fontFamily: 'Arial, sans-serif',
-                                color: 'black',
-                                fontSize: '14px'
-                            }}
-                        />
-                    </div>
-
-                    {/* Ending Point */}
-                    <div style={{ marginBottom: '15px' }}>
-                        <label htmlFor="end-input" style={{
-                            display: 'block',
-                            marginBottom: '5px',
-                            fontWeight: 'bold',
-                            color: '#555'
-                        }}>
-                            Ending Point:
-                        </label>
-                        <input
-                            id="end-input"
-                            type="text"
-                            value={endPoint}
-                            onChange={(e) => setEndPoint(e.target.value)}
-                            placeholder="Enter destination..."
-                            autoComplete="on"
-                            style={{
-                                width: '100%',
-                                padding: '10px',
-                                border: '1px solid #ccc',
-                                borderRadius: '4px',
-                                fontFamily: 'Arial, sans-serif',
-                                color: 'black',
-                                fontSize: '14px'
-                            }}
-                        />
-                    </div>
-
-                    {/* Intermediate Cities */}
-                    <div style={{ marginBottom: '15px' }}>
-                        <label htmlFor="place-input" style={{
-                            display: 'block',
-                            marginBottom: '5px',
-                            fontWeight: 'bold',
-                            color: '#555'
-                        }}>
-                            Add Intermediate Stops:
-                        </label>
-                        <form onSubmit={handleSubmit}>
+                        {/* Starting Point */}
+                        <div style={{ marginBottom: '15px' }}>
+                            <label htmlFor="start-input" style={{
+                                display: 'block',
+                                marginBottom: '5px',
+                                fontWeight: 'bold',
+                                color: '#555'
+                            }}>
+                                Starting Point:
+                            </label>
                             <input
-                                id="place-input"
+                                id="start-input"
                                 type="text"
-                                value={inputValue}
-                                onChange={handleInputChange}
-                                placeholder="Add cities to visit along the way..."
+                                value={startPoint}
+                                onChange={(e) => setStartPoint(e.target.value)}
+                                placeholder="Enter starting location..."
                                 autoComplete="on"
                                 style={{
                                     width: '100%',
@@ -322,55 +261,73 @@ export default function RequestPage() {
                                     borderRadius: '4px',
                                     fontFamily: 'Arial, sans-serif',
                                     color: 'black',
-                                    fontSize: '14px',
-                                    marginBottom: '10px'
+                                    fontSize: '14px'
                                 }}
                             />
-                            <button
-                                type="submit"
-                                style={{
-                                    backgroundColor: '#007bff',
-                                    color: 'white',
-                                    padding: '10px 20px',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    fontSize: '14px',
-                                    width: '100%'
-                                }}
-                                onMouseOver={(e) => e.target.style.backgroundColor = '#0056b3'}
-                                onMouseOut={(e) => e.target.style.backgroundColor = '#007bff'}
-                            >
-                                Add Stop
-                            </button>
-                        </form>
-                    </div>
+                        </div>
 
-                    {/* Route Controls */}
-                    {startPoint.trim() && endPoint.trim() && (
-                        <div style={{ marginBottom: '20px' }}>
-                            <button
-                                onClick={calculateOptimalRoute}
-                                disabled={isCalculating}
+                        {/* Ending Point */}
+                        <div style={{ marginBottom: '15px' }}>
+                            <label htmlFor="end-input" style={{
+                                display: 'block',
+                                marginBottom: '5px',
+                                fontWeight: 'bold',
+                                color: '#555'
+                            }}>
+                                Ending Point:
+                            </label>
+                            <input
+                                id="end-input"
+                                type="text"
+                                value={endPoint}
+                                onChange={(e) => setEndPoint(e.target.value)}
+                                placeholder="Enter destination..."
+                                autoComplete="on"
                                 style={{
-                                    backgroundColor: isCalculating ? '#6c757d' : '#28a745',
-                                    color: 'white',
-                                    padding: '10px 20px',
-                                    border: 'none',
+                                    width: '100%',
+                                    padding: '10px',
+                                    border: '1px solid #ccc',
                                     borderRadius: '4px',
-                                    cursor: isCalculating ? 'not-allowed' : 'pointer',
-                                    fontSize: '14px',
-                                    marginBottom: '10px',
-                                    width: '100%'
+                                    fontFamily: 'Arial, sans-serif',
+                                    color: 'black',
+                                    fontSize: '14px'
                                 }}
-                            >
-                                {isCalculating ? 'Calculating...' : 'Calculate Optimal Route'}
-                            </button>
-                            {directions && (
-                                <button
-                                    onClick={clearRoute}
+                            />
+                        </div>
+
+                        {/* Intermediate Cities */}
+                        <div style={{ marginBottom: '15px' }}>
+                            <label htmlFor="place-input" style={{
+                                display: 'block',
+                                marginBottom: '5px',
+                                fontWeight: 'bold',
+                                color: '#555'
+                            }}>
+                                Add Intermediate Stops:
+                            </label>
+                            <form onSubmit={handleSubmit}>
+                                <input
+                                    id="place-input"
+                                    type="text"
+                                    value={inputValue}
+                                    onChange={handleInputChange}
+                                    placeholder="Add cities to visit along the way..."
+                                    autoComplete="on"
                                     style={{
-                                        backgroundColor: '#dc3545',
+                                        width: '100%',
+                                        padding: '10px',
+                                        border: '1px solid #ccc',
+                                        borderRadius: '4px',
+                                        fontFamily: 'Arial, sans-serif',
+                                        color: 'black',
+                                        fontSize: '14px',
+                                        marginBottom: '10px'
+                                    }}
+                                />
+                                <button
+                                    type="submit"
+                                    style={{
+                                        backgroundColor: '#007bff',
                                         color: 'white',
                                         padding: '10px 20px',
                                         border: 'none',
@@ -379,58 +336,99 @@ export default function RequestPage() {
                                         fontSize: '14px',
                                         width: '100%'
                                     }}
+                                    onMouseOver={(e) => e.target.style.backgroundColor = '#0056b3'}
+                                    onMouseOut={(e) => e.target.style.backgroundColor = '#007bff'}
                                 >
-                                    Clear Route
+                                    Add Stop
                                 </button>
-                            )}
+                            </form>
                         </div>
-                    )}
 
-                    {/* Display added places */}
-                    {intermediateCities.length > 0 && (
-                        <div>
-                            <h3 style={{ marginBottom: '10px', color: '#333', fontSize: '16px' }}>
-                                Intermediate Stops ({intermediateCities.length}):
-                            </h3>
-                            <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                                {intermediateCities.map((city, index) => (
-                                    <div
-                                        key={index}
+                        {/* Route Controls */}
+                        {startPoint.trim() && endPoint.trim() && (
+                            <div style={{ marginBottom: '20px' }}>
+                                <button
+                                    onClick={calculateOptimalRoute}
+                                    disabled={isCalculating}
+                                    style={{
+                                        backgroundColor: isCalculating ? '#6c757d' : '#28a745',
+                                        color: 'white',
+                                        padding: '10px 20px',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        cursor: isCalculating ? 'not-allowed' : 'pointer',
+                                        fontSize: '14px',
+                                        marginBottom: '10px',
+                                        width: '100%'
+                                    }}
+                                >
+                                    {isCalculating ? 'Calculating...' : 'Calculate Optimal Route'}
+                                </button>
+                                {directions && (
+                                    <button
+                                        onClick={clearRoute}
                                         style={{
-                                            display: 'flex',
-                                            justifyContent: 'space-between',
-                                            alignItems: 'center',
-                                            padding: '8px 12px',
-                                            backgroundColor: 'white',
-                                            border: '1px solid #ddd',
+                                            backgroundColor: '#dc3545',
+                                            color: 'white',
+                                            padding: '10px 20px',
+                                            border: 'none',
                                             borderRadius: '4px',
-                                            marginBottom: '5px'
+                                            cursor: 'pointer',
+                                            fontSize: '14px',
+                                            width: '100%'
                                         }}
                                     >
-                                        <span style={{ color: '#333', fontSize: '14px' }}>
-                                            {index + 1}. {city}
-                                        </span>
-                                        <button
-                                            onClick={() => removeCity(index)}
-                                            style={{
-                                                backgroundColor: '#dc3545',
-                                                color: 'white',
-                                                border: 'none',
-                                                borderRadius: '3px',
-                                                padding: '4px 8px',
-                                                cursor: 'pointer',
-                                                fontSize: '12px'
-                                            }}
-                                            onMouseOver={(e) => e.target.style.backgroundColor = '#c82333'}
-                                            onMouseOut={(e) => e.target.style.backgroundColor = '#dc3545'}
-                                        >
-                                            Remove
-                                        </button>
-                                    </div>
-                                ))}
+                                        Clear Route
+                                    </button>
+                                )}
                             </div>
-                        </div>
-                    )}
+                        )}
+
+                        {/* Display added places */}
+                        {intermediateCities.length > 0 && (
+                            <div>
+                                <h3 style={{ marginBottom: '10px', color: '#333', fontSize: '16px' }}>
+                                    Intermediate Stops ({intermediateCities.length}):
+                                </h3>
+                                <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                                    {intermediateCities.map((city, index) => (
+                                        <div
+                                            key={index}
+                                            style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                padding: '8px 12px',
+                                                backgroundColor: 'white',
+                                                border: '1px solid #ddd',
+                                                borderRadius: '4px',
+                                                marginBottom: '5px'
+                                            }}
+                                        >
+                                            <span style={{ color: '#333', fontSize: '14px' }}>
+                                                {index + 1}. {city}
+                                            </span>
+                                            <button
+                                                onClick={() => removeCity(index)}
+                                                style={{
+                                                    backgroundColor: '#dc3545',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    borderRadius: '3px',
+                                                    padding: '4px 8px',
+                                                    cursor: 'pointer',
+                                                    fontSize: '12px'
+                                                }}
+                                                onMouseOver={(e) => e.target.style.backgroundColor = '#c82333'}
+                                                onMouseOut={(e) => e.target.style.backgroundColor = '#dc3545'}
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </>
                 )}
                 {sidebarTab === 'places' && (
