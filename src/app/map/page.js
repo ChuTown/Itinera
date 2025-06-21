@@ -4,11 +4,16 @@ import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { GoogleMap, useJsApiLoader, DirectionsRenderer } from '@react-google-maps/api'
 
 export default function RequestPage() {
-    const [cities, setCities] = useState([])
+    const [startPoint, setStartPoint] = useState('')
+    const [endPoint, setEndPoint] = useState('')
+    const [intermediateCities, setIntermediateCities] = useState([])
     const [inputValue, setInputValue] = useState('')
     const [directions, setDirections] = useState(null)
     const [isCalculating, setIsCalculating] = useState(false)
     const autocompleteRef = useRef(null)
+    const startAutocompleteRef = useRef(null)
+    const endAutocompleteRef = useRef(null)
+    const intermediateAutocompleteRef = useRef(null)
     const directionsServiceRef = useRef(null)
 
     const containerStyle = {
@@ -24,10 +29,10 @@ export default function RequestPage() {
     const handleSubmit = (e) => {
         e.preventDefault()
         if (inputValue.trim()) {
-            setCities([...cities, inputValue.trim()])
+            setIntermediateCities([...intermediateCities, inputValue.trim()])
             setInputValue('')
         }
-        console.log('Cities to travel to:', cities)
+        console.log('Cities to travel to:', intermediateCities)
     }
 
     const handleInputChange = (e) => {
@@ -35,28 +40,28 @@ export default function RequestPage() {
     }
 
     const removeCity = (index) => {
-        const newCities = cities.filter((_, i) => i !== index)
-        setCities(newCities)
+        const newCities = intermediateCities.filter((_, i) => i !== index)
+        setIntermediateCities(newCities)
     }
 
     const calculateOptimalRoute = async () => {
-        if (cities.length < 2) {
-            alert('Please add at least 2 places to calculate a route')
+        if (!startPoint.trim() || !endPoint.trim()) {
+            alert('Please enter both starting and ending points')
             return
         }
 
         setIsCalculating(true)
 
         try {
-            // Create waypoints from all cities except the first one
-            const waypoints = cities.slice(1).map(city => ({
+            // Create waypoints from intermediate cities
+            const waypoints = intermediateCities.map(city => ({
                 location: city,
                 stopover: true
             }))
 
             const request = {
-                origin: cities[0],
-                destination: cities[cities.length - 1],
+                origin: startPoint,
+                destination: endPoint,
                 waypoints: waypoints,
                 optimizeWaypoints: true, // This enables route optimization
                 travelMode: window.google.maps.TravelMode.DRIVING
@@ -106,13 +111,43 @@ export default function RequestPage() {
 
             React.useEffect(() => {
                 if (isLoaded && window.google) {
-                    autocompleteRef.current = new window.google.maps.places.Autocomplete(
+                    // Initialize autocomplete for starting point
+                    startAutocompleteRef.current = new window.google.maps.places.Autocomplete(
+                        document.getElementById('start-input'),
+                        { types: ['(cities)'] }
+                    )
+
+                    // Initialize autocomplete for ending point
+                    endAutocompleteRef.current = new window.google.maps.places.Autocomplete(
+                        document.getElementById('end-input'),
+                        { types: ['(cities)'] }
+                    )
+
+                    // Initialize autocomplete for intermediate stops
+                    intermediateAutocompleteRef.current = new window.google.maps.places.Autocomplete(
                         document.getElementById('place-input'),
                         { types: ['(cities)'] }
                     )
 
-                    autocompleteRef.current.addListener('place_changed', () => {
-                        const place = autocompleteRef.current.getPlace()
+                    // Add listeners for starting point
+                    startAutocompleteRef.current.addListener('place_changed', () => {
+                        const place = startAutocompleteRef.current.getPlace()
+                        if (place.formatted_address) {
+                            setStartPoint(place.formatted_address)
+                        }
+                    })
+
+                    // Add listeners for ending point
+                    endAutocompleteRef.current.addListener('place_changed', () => {
+                        const place = endAutocompleteRef.current.getPlace()
+                        if (place.formatted_address) {
+                            setEndPoint(place.formatted_address)
+                        }
+                    })
+
+                    // Add listeners for intermediate stops
+                    intermediateAutocompleteRef.current.addListener('place_changed', () => {
+                        const place = intermediateAutocompleteRef.current.getPlace()
                         if (place.formatted_address) {
                             setInputValue(place.formatted_address)
                         }
@@ -160,23 +195,81 @@ export default function RequestPage() {
                 backgroundColor: '#f5f5f5',
                 borderRight: '1px solid #ddd'
             }}>
-                <h2 style={{ marginBottom: '20px', color: '#333' }}>Travel Cities</h2>
-                <form onSubmit={handleSubmit}>
-                    <div style={{ marginBottom: '15px' }}>
-                        <label htmlFor="place-input" style={{
-                            display: 'block',
-                            marginBottom: '5px',
-                            fontWeight: 'bold',
-                            color: '#555'
-                        }}>
-                            Add a place:
-                        </label>
+                <h2 style={{ marginBottom: '20px', color: '#333' }}>Travel Route Planner</h2>
+
+                {/* Starting Point */}
+                <div style={{ marginBottom: '15px' }}>
+                    <label htmlFor="start-input" style={{
+                        display: 'block',
+                        marginBottom: '5px',
+                        fontWeight: 'bold',
+                        color: '#555'
+                    }}>
+                        Starting Point:
+                    </label>
+                    <input
+                        id="start-input"
+                        type="text"
+                        value={startPoint}
+                        onChange={(e) => setStartPoint(e.target.value)}
+                        placeholder="Enter starting location..."
+                        style={{
+                            width: '100%',
+                            padding: '10px',
+                            border: '1px solid #ccc',
+                            borderRadius: '4px',
+                            fontFamily: 'Arial, sans-serif',
+                            color: 'black',
+                            fontSize: '14px'
+                        }}
+                    />
+                </div>
+
+                {/* Ending Point */}
+                <div style={{ marginBottom: '15px' }}>
+                    <label htmlFor="end-input" style={{
+                        display: 'block',
+                        marginBottom: '5px',
+                        fontWeight: 'bold',
+                        color: '#555'
+                    }}>
+                        Ending Point:
+                    </label>
+                    <input
+                        id="end-input"
+                        type="text"
+                        value={endPoint}
+                        onChange={(e) => setEndPoint(e.target.value)}
+                        placeholder="Enter destination..."
+                        style={{
+                            width: '100%',
+                            padding: '10px',
+                            border: '1px solid #ccc',
+                            borderRadius: '4px',
+                            fontFamily: 'Arial, sans-serif',
+                            color: 'black',
+                            fontSize: '14px'
+                        }}
+                    />
+                </div>
+
+                {/* Intermediate Cities */}
+                <div style={{ marginBottom: '15px' }}>
+                    <label htmlFor="place-input" style={{
+                        display: 'block',
+                        marginBottom: '5px',
+                        fontWeight: 'bold',
+                        color: '#555'
+                    }}>
+                        Add Intermediate Stops:
+                    </label>
+                    <form onSubmit={handleSubmit}>
                         <input
                             id="place-input"
                             type="text"
                             value={inputValue}
                             onChange={handleInputChange}
-                            placeholder="Start typing a city name..."
+                            placeholder="Add cities to visit along the way..."
                             style={{
                                 width: '100%',
                                 padding: '10px',
@@ -184,31 +277,32 @@ export default function RequestPage() {
                                 borderRadius: '4px',
                                 fontFamily: 'Arial, sans-serif',
                                 color: 'black',
-                                fontSize: '14px'
+                                fontSize: '14px',
+                                marginBottom: '10px'
                             }}
                         />
-                    </div>
-                    <button
-                        type="submit"
-                        style={{
-                            backgroundColor: '#007bff',
-                            color: 'white',
-                            padding: '10px 20px',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                            fontSize: '14px',
-                            marginBottom: '15px'
-                        }}
-                        onMouseOver={(e) => e.target.style.backgroundColor = '#0056b3'}
-                        onMouseOut={(e) => e.target.style.backgroundColor = '#007bff'}
-                    >
-                        Add Place
-                    </button>
-                </form>
+                        <button
+                            type="submit"
+                            style={{
+                                backgroundColor: '#007bff',
+                                color: 'white',
+                                padding: '10px 20px',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontSize: '14px',
+                                width: '100%'
+                            }}
+                            onMouseOver={(e) => e.target.style.backgroundColor = '#0056b3'}
+                            onMouseOut={(e) => e.target.style.backgroundColor = '#007bff'}
+                        >
+                            Add Stop
+                        </button>
+                    </form>
+                </div>
 
                 {/* Route Controls */}
-                {cities.length >= 2 && (
+                {startPoint.trim() && endPoint.trim() && (
                     <div style={{ marginBottom: '20px' }}>
                         <button
                             onClick={calculateOptimalRoute}
@@ -248,13 +342,13 @@ export default function RequestPage() {
                 )}
 
                 {/* Display added places */}
-                {cities.length > 0 && (
+                {intermediateCities.length > 0 && (
                     <div>
                         <h3 style={{ marginBottom: '10px', color: '#333', fontSize: '16px' }}>
-                            Added Places ({cities.length}):
+                            Intermediate Stops ({intermediateCities.length}):
                         </h3>
                         <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                            {cities.map((city, index) => (
+                            {intermediateCities.map((city, index) => (
                                 <div
                                     key={index}
                                     style={{
