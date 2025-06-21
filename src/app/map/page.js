@@ -17,8 +17,8 @@ export default function RequestPage() {
     };
 
     const center = {
-        lat: -3.745,
-        lng: -38.523,
+        lat: 43.51564092714851,
+        lng: -80.51369485785276,
     };
 
     const handleSubmit = (e) => {
