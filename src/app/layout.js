@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "Path4You",
+  title: "Intinera",
   description: "SpurHacks Winner Winner Chicken Dinner",
 };
 
