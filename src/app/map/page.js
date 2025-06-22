@@ -1,529 +1,339 @@
 "use client"
 
 import React, { useState, useMemo, useRef, useEffect } from 'react'
-import { GoogleMap, useJsApiLoader, DirectionsRenderer } from '@react-google-maps/api'
+import { GoogleMap, useJsApiLoader, DirectionsRenderer, Marker } from '@react-google-maps/api'
+import CityList from './CityList';
+import CityExplorationPanel from './CityExplorationPanel';
+import usePersistentState from '../hooks/usePersistentState';
 
 export default function RequestPage() {
-    const [startPoint, setStartPoint] = useState('')
-    const [endPoint, setEndPoint] = useState('')
-    const [intermediateCities, setIntermediateCities] = useState([])
-    const [inputValue, setInputValue] = useState('')
-    const [directions, setDirections] = useState(null)
-    const [isCalculating, setIsCalculating] = useState(false)
-    const autocompleteRef = useRef(null)
-    const startAutocompleteRef = useRef(null)
-    const endAutocompleteRef = useRef(null)
-    const intermediateAutocompleteRef = useRef(null)
-    const directionsServiceRef = useRef(null)
-    const [sidebarTab, setSidebarTab] = useState('route'); // 'route' or 'places'
-    const [vibe, setVibe] = useState('');
-    const [suggestedPlaces, setSuggestedPlaces] = useState([]);
-    const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
-    const [addedPlaces, setAddedPlaces] = useState([]); // For places added to route from suggestions
+    const [startPoint, setStartPoint] = usePersistentState('startPoint', '');
+    const [endPoint, setEndPoint] = usePersistentState('endPoint', '');
+    const [intermediateCities, setIntermediateCities] = usePersistentState('intermediateCities', []);
+    const [sidebarTab, setSidebarTab] = usePersistentState('sidebarTab', 'route');
+    const [selectedCity, setSelectedCity] = usePersistentState('selectedCity', null);
+    const [selectedPlacesPerCity, setSelectedPlacesPerCity] = usePersistentState('selectedPlacesPerCity', {});
+    
+    // Non-persistent state
+    const [directions, setDirections] = useState(null);
+    const [cityRoutes, setCityRoutes] = useState({});
+    const [isCalculating, setIsCalculating] = useState(false);
+    const [inputValue, setInputValue] = useState('');
+    const [mapView, setMapView] = usePersistentState('mapView', {
+        center: { lat: 43.515640, lng: -80.513694 },
+        zoom: 7
+    });
 
-    const containerStyle = {
-        width: '100%',
-        height: '100%',
+    const allPlacesWithLabels = useMemo(() => {
+        const places = [];
+        Object.values(selectedPlacesPerCity).forEach(cityPlaces => {
+            cityPlaces.forEach((place, index) => {
+                if (place.lat && place.lng) {
+                    places.push({ ...place, label: `${index + 1}` });
+                }
+            });
+        });
+        return places;
+    }, [selectedPlacesPerCity]);
+
+    const mapRef = useRef(null);
+    const startAutocompleteRef = useRef(null);
+    const endAutocompleteRef = useRef(null);
+    const intermediateAutocompleteRef = useRef(null);
+    const directionsServiceRef = useRef(null);
+
+    const { isLoaded, loadError } = useJsApiLoader({
+        id: 'google-map-script',
+        googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
+        libraries: ['places'],
+    });
+    
+    const onLoad = React.useCallback(function callback(map) {
+        mapRef.current = map;
+        directionsServiceRef.current = new window.google.maps.DirectionsService();
+    }, []);
+
+    const onUnmount = React.useCallback(function callback(map) {
+        mapRef.current = null;
+    }, []);
+    
+    const handleMapStateChange = () => {
+        if (mapRef.current) {
+            const newCenter = mapRef.current.getCenter().toJSON();
+            const newZoom = mapRef.current.getZoom();
+            setMapView({ center: newCenter, zoom: newZoom });
+        }
     };
 
-    const center = {
-        lat: 43.51564092714851,
-        lng: -80.51369485785276,
+    const calculateOptimalRoute = async () => {
+        if (!startPoint.trim() || !endPoint.trim()) return;
+        setIsCalculating(true);
+        // Reset only non-persistent route data
+        setDirections(null);
+        setCityRoutes({});
+
+        const request = {
+            origin: startPoint,
+            destination: endPoint,
+            waypoints: intermediateCities.map(city => ({ location: city, stopover: true })),
+            optimizeWaypoints: true,
+            travelMode: window.google.maps.TravelMode.DRIVING
+        };
+
+        directionsServiceRef.current.route(request, (result, status) => {
+            setIsCalculating(false);
+            if (status === 'OK') {
+                setDirections(result);
+            } else {
+                console.error('Directions request failed due to ' + status);
+                alert('Failed to calculate route. Please check your place names.');
+            }
+        });
+    };
+
+    const routeCities = useMemo(() => {
+        if (!directions) return [];
+        return directions.routes[0].legs.map(leg => leg.end_address);
+    }, [directions]);
+
+    const handleCitySelect = (city) => {
+        setSelectedCity(city);
+        const geocoder = new window.google.maps.Geocoder();
+        geocoder.geocode({ 'address': city }, (results, status) => {
+          if (status === 'OK' && mapRef.current) {
+            const location = results[0].geometry.location;
+            mapRef.current.panTo(location);
+            mapRef.current.setZoom(12);
+            setMapView({ center: location.toJSON(), zoom: 12 });
+          } else {
+            console.error('Geocode was not successful for the following reason: ' + status);
+          }
+        });
+    };
+
+    const handleTogglePlace = (place) => {
+        const geocoder = new window.google.maps.Geocoder();
+        const currentPlaces = selectedPlacesPerCity[selectedCity] || [];
+        const isSelected = currentPlaces.some(p => p.place === place.place);
+
+        if (isSelected) {
+            const newPlaces = currentPlaces.filter(p => p.place !== place.place);
+            setSelectedPlacesPerCity(prev => ({ ...prev, [selectedCity]: newPlaces }));
+        } else {
+            geocoder.geocode({ address: place.place + `, ${selectedCity}` }, (results, status) => {
+                if (status === 'OK' && results[0]) {
+                    const location = results[0].geometry.location;
+                    const enrichedPlace = { ...place, lat: location.lat(), lng: location.lng() };
+                    setSelectedPlacesPerCity(prev => ({
+                        ...prev,
+                        [selectedCity]: [...(prev[selectedCity] || []), enrichedPlace],
+                    }));
+                } else {
+                    console.error(`Geocode failed for "${place.place}": ${status}`);
+                    alert(`Could not find "${place.place}" on the map. It was not added to your route.`);
+                }
+            });
+        }
+    };
+    
+    const handleOptimizeDayInCity = () => {
+        const places = selectedPlacesPerCity[selectedCity];
+        if (!places || places.length < 2) return;
+
+        const request = {
+            origin: { lat: places[0].lat, lng: places[0].lng },
+            destination: { lat: places[places.length - 1].lat, lng: places[places.length - 1].lng },
+            waypoints: places.slice(1, -1).map(p => ({ location: { lat: p.lat, lng: p.lng }, stopover: true })),
+            travelMode: window.google.maps.TravelMode.DRIVING,
+        };
+
+        directionsServiceRef.current.route(request, (result, status) => {
+            if (status === 'OK') {
+                setCityRoutes(prev => ({ ...prev, [selectedCity]: result }));
+            } else {
+                console.error(`Directions request failed for ${selectedCity} due to ${status}`);
+            }
+        });
     };
 
     const handleSubmit = (e) => {
-        e.preventDefault()
+        e.preventDefault();
         if (inputValue.trim()) {
-            setIntermediateCities([...intermediateCities, inputValue.trim()])
-            setInputValue('')
+            setIntermediateCities([...intermediateCities, inputValue.trim()]);
+            setInputValue('');
         }
-        console.log('Cities to travel to:', intermediateCities)
-    }
+    };
 
-    const handleInputChange = (e) => {
-        setInputValue(e.target.value)
-    }
+    const handleInputChange = (e) => { setInputValue(e.target.value); };
+    const removeCity = (index) => { setIntermediateCities(intermediateCities.filter((_, i) => i !== index)); };
 
-    const removeCity = (index) => {
-        const newCities = intermediateCities.filter((_, i) => i !== index)
-        setIntermediateCities(newCities)
-    }
-
-    const calculateOptimalRoute = async () => {
-        if (!startPoint.trim() || !endPoint.trim()) {
-            alert('Please enter both starting and ending points')
-            return
-        }
-
-        setIsCalculating(true)
-
-        try {
-            // Create waypoints from intermediate cities
-            const waypoints = intermediateCities.map(city => ({
-                location: city,
-                stopover: true
-            }))
-
-            const request = {
-                origin: startPoint,
-                destination: endPoint,
-                waypoints: waypoints,
-                optimizeWaypoints: true, // This enables route optimization
-                travelMode: window.google.maps.TravelMode.DRIVING
+    const clearPlan = () => {
+        setStartPoint('');
+        setEndPoint('');
+        setIntermediateCities([]);
+        setDirections(null);
+        setCityRoutes({});
+        setSelectedPlacesPerCity({});
+        setSelectedCity(null);
+        setSidebarTab('route');
+        setMapView({ center: { lat: 43.515640, lng: -80.513694 }, zoom: 7 });
+    };
+    
+    useEffect(() => {
+        if (isLoaded && !loadError && directionsServiceRef.current) {
+            // Auto-recalculate route on load if inputs are present
+            if (startPoint && endPoint && !directions) {
+                calculateOptimalRoute();
             }
-
-            directionsServiceRef.current.route(request, (result, status) => {
-                setIsCalculating(false)
-                if (status === 'OK') {
-                    setDirections(result)
-                    console.log('Optimized route:', result)
-                } else {
-                    console.error('Directions request failed due to ' + status)
-                    alert('Failed to calculate route. Please check your place names.')
-                }
-            })
-        } catch (error) {
-            setIsCalculating(false)
-            console.error('Error calculating route:', error)
-            alert('Error calculating route. Please try again.')
         }
-    }
+    }, [isLoaded, loadError]);
 
-    const clearRoute = () => {
-        setDirections(null)
-    }
-
-    const MyComponent = useMemo(() => {
-        return function MapComponent() {
-            const { isLoaded } = useJsApiLoader({
-                id: 'google-map-script',
-                googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
-                libraries: ['places'],
-            });
-
-            const [map, setMap] = React.useState(null);
-
-            const onLoad = React.useCallback(function callback(map) {
-                setMap(map);
-                directionsServiceRef.current = new window.google.maps.DirectionsService()
-            }, []);
-
-            const onUnmount = React.useCallback(function callback(map) {
-                setMap(null);
-            }, []);
-
-            React.useEffect(() => {
-                if (isLoaded && window.google) {
-                    // Initialize autocomplete for starting point
-                    startAutocompleteRef.current = new window.google.maps.places.Autocomplete(
-                        document.getElementById('start-input'),
-                        { types: ['(cities)'] }
-                    )
-
-                    // Initialize autocomplete for ending point
-                    endAutocompleteRef.current = new window.google.maps.places.Autocomplete(
-                        document.getElementById('end-input'),
-                        { types: ['(cities)'] }
-                    )
-
-                    // Initialize autocomplete for intermediate stops
-                    intermediateAutocompleteRef.current = new window.google.maps.places.Autocomplete(
-                        document.getElementById('place-input'),
-                        { types: ['(cities)'] }
-                    )
-
-                    // Add listeners for starting point
-                    startAutocompleteRef.current.addListener('place_changed', () => {
-                        const place = startAutocompleteRef.current.getPlace()
+    useEffect(() => {
+        if (isLoaded && !loadError) {
+            const initAutocomplete = (ref, inputId, onPlaceChanged) => {
+                const input = document.getElementById(inputId);
+                if (input && !ref.current) { // Prevent re-initialization
+                    ref.current = new window.google.maps.places.Autocomplete(input, { types: ['(cities)'] });
+                    ref.current.addListener('place_changed', () => {
+                        const place = ref.current.getPlace();
                         if (place.formatted_address) {
-                            setStartPoint(place.formatted_address)
+                            onPlaceChanged(place.formatted_address);
                         }
-                    })
-
-                    // Add listeners for ending point
-                    endAutocompleteRef.current.addListener('place_changed', () => {
-                        const place = endAutocompleteRef.current.getPlace()
-                        if (place.formatted_address) {
-                            setEndPoint(place.formatted_address)
-                        }
-                    })
-
-                    // Add listeners for intermediate stops
-                    intermediateAutocompleteRef.current.addListener('place_changed', () => {
-                        const place = intermediateAutocompleteRef.current.getPlace()
-                        if (place.formatted_address) {
-                            setInputValue(place.formatted_address)
-                        }
-                    })
+                    });
                 }
-            }, [isLoaded])
+            };
 
-            return isLoaded ? (
-                <GoogleMap
-                    mapContainerStyle={containerStyle}
-                    center={center}
-                    zoom={8}
-                    onLoad={onLoad}
-                    onUnmount={onUnmount}
-                    options={{
-                        zoomControl: true,
-                        streetViewControl: false
-                    }}
-                >
-                    {directions && (
-                        <DirectionsRenderer
-                            directions={directions}
-                            options={{
-                                suppressMarkers: false,
-                                polylineOptions: {
-                                    strokeColor: '#FF0000',
-                                    strokeWeight: 4
-                                }
-                            }}
-                        />
-                    )}
-                </GoogleMap>
-            ) : (
-                <></>
-            );
+            initAutocomplete(startAutocompleteRef, 'start-input', setStartPoint);
+            initAutocomplete(endAutocompleteRef, 'end-input', setEndPoint);
+            initAutocomplete(intermediateAutocompleteRef, 'place-input', setInputValue);
         }
-    }, [directions]);
+    }, [isLoaded, loadError, sidebarTab]);
+
+    if (loadError) return <div>Error loading maps</div>;
+    if (!isLoaded) return <div>Loading...</div>;
 
     return (
-        <div style={{ display: 'flex', height: '100vh' }}>
-            {/* Form Section */}
-            <div style={{
-                width: '300px',
-                padding: '20px',
-                backgroundColor: '#f5f5f5',
-                borderRight: '1px solid #ddd'
-            }}>
-                <h2 style={{ marginBottom: '20px', color: '#333' }}>Travel Route Planner</h2>
+        <div className="flex h-screen font-sans">
+            <div className="w-96 p-6 bg-gray-50 border-r border-gray-200 flex flex-col h-full">
+                <h1 className="text-2xl font-bold text-gray-900 mb-6">Travel Route Planner</h1>
 
-                <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+                <div className="flex gap-2 mb-6">
                     <button
-                        onClick={() => setSidebarTab('route')}
-                        style={{
-                            flex: 1,
-                            backgroundColor: sidebarTab === 'route' ? '#007bff' : '#e0e0e0',
-                            color: sidebarTab === 'route' ? 'white' : '#333',
-                            border: 'none',
-                            borderRadius: '4px 0 0 4px',
-                            padding: '10px',
-                            cursor: 'pointer',
-                            fontWeight: 'bold',
-                            fontSize: 14
-                        }}
+                        onClick={() => { setSidebarTab('route'); setSelectedCity(null); }}
+                        className={`flex-1 py-2 px-4 rounded-md font-semibold text-sm focus:outline-none ${sidebarTab === 'route' && !selectedCity ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
                     >
                         Route Planner
                     </button>
                     <button
                         onClick={() => setSidebarTab('places')}
-                        style={{
-                            flex: 1,
-                            backgroundColor: sidebarTab === 'places' ? '#007bff' : '#e0e0e0',
-                            color: sidebarTab === 'places' ? 'white' : '#333',
-                            border: 'none',
-                            borderRadius: '0 4px 4px 0',
-                            padding: '10px',
-                            cursor: 'pointer',
-                            fontWeight: 'bold',
-                            fontSize: 14
-                        }}
+                        className={`flex-1 py-2 px-4 rounded-md font-semibold text-sm focus:outline-none ${sidebarTab === 'places' || selectedCity ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
                     >
                         Places
                     </button>
                 </div>
-
-                {sidebarTab === 'route' && (
-                    <>
-                        {/* Starting Point */}
-                        <div style={{ marginBottom: '15px' }}>
-                            <label htmlFor="start-input" style={{
-                                display: 'block',
-                                marginBottom: '5px',
-                                fontWeight: 'bold',
-                                color: '#555'
-                            }}>
-                                Starting Point:
-                            </label>
-                            <input
-                                id="start-input"
-                                type="text"
-                                value={startPoint}
-                                onChange={(e) => setStartPoint(e.target.value)}
-                                placeholder="Enter starting location..."
-                                autoComplete="on"
-                                style={{
-                                    width: '100%',
-                                    padding: '10px',
-                                    border: '1px solid #ccc',
-                                    borderRadius: '4px',
-                                    fontFamily: 'Arial, sans-serif',
-                                    color: 'black',
-                                    fontSize: '14px'
-                                }}
-                            />
-                        </div>
-
-                        {/* Ending Point */}
-                        <div style={{ marginBottom: '15px' }}>
-                            <label htmlFor="end-input" style={{
-                                display: 'block',
-                                marginBottom: '5px',
-                                fontWeight: 'bold',
-                                color: '#555'
-                            }}>
-                                Ending Point:
-                            </label>
-                            <input
-                                id="end-input"
-                                type="text"
-                                value={endPoint}
-                                onChange={(e) => setEndPoint(e.target.value)}
-                                placeholder="Enter destination..."
-                                autoComplete="on"
-                                style={{
-                                    width: '100%',
-                                    padding: '10px',
-                                    border: '1px solid #ccc',
-                                    borderRadius: '4px',
-                                    fontFamily: 'Arial, sans-serif',
-                                    color: 'black',
-                                    fontSize: '14px'
-                                }}
-                            />
-                        </div>
-
-                        {/* Intermediate Cities */}
-                        <div style={{ marginBottom: '15px' }}>
-                            <label htmlFor="place-input" style={{
-                                display: 'block',
-                                marginBottom: '5px',
-                                fontWeight: 'bold',
-                                color: '#555'
-                            }}>
-                                Add Intermediate Stops:
-                            </label>
-                            <form onSubmit={handleSubmit}>
-                                <input
-                                    id="place-input"
-                                    type="text"
-                                    value={inputValue}
-                                    onChange={handleInputChange}
-                                    placeholder="Add cities to visit along the way..."
-                                    autoComplete="on"
-                                    style={{
-                                        width: '100%',
-                                        padding: '10px',
-                                        border: '1px solid #ccc',
-                                        borderRadius: '4px',
-                                        fontFamily: 'Arial, sans-serif',
-                                        color: 'black',
-                                        fontSize: '14px',
-                                        marginBottom: '10px'
-                                    }}
-                                />
-                                <button
-                                    type="submit"
-                                    style={{
-                                        backgroundColor: '#007bff',
-                                        color: 'white',
-                                        padding: '10px 20px',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        cursor: 'pointer',
-                                        fontSize: '14px',
-                                        width: '100%'
-                                    }}
-                                    onMouseOver={(e) => e.target.style.backgroundColor = '#0056b3'}
-                                    onMouseOut={(e) => e.target.style.backgroundColor = '#007bff'}
-                                >
-                                    Add Stop
-                                </button>
-                            </form>
-                        </div>
-
-                        {/* Route Controls */}
-                        {startPoint.trim() && endPoint.trim() && (
-                            <div style={{ marginBottom: '20px' }}>
-                                <button
-                                    onClick={calculateOptimalRoute}
-                                    disabled={isCalculating}
-                                    style={{
-                                        backgroundColor: isCalculating ? '#6c757d' : '#28a745',
-                                        color: 'white',
-                                        padding: '10px 20px',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        cursor: isCalculating ? 'not-allowed' : 'pointer',
-                                        fontSize: '14px',
-                                        marginBottom: '10px',
-                                        width: '100%'
-                                    }}
-                                >
-                                    {isCalculating ? 'Calculating...' : 'Calculate Optimal Route'}
-                                </button>
-                                {directions && (
-                                    <button
-                                        onClick={clearRoute}
-                                        style={{
-                                            backgroundColor: '#dc3545',
-                                            color: 'white',
-                                            padding: '10px 20px',
-                                            border: 'none',
-                                            borderRadius: '4px',
-                                            cursor: 'pointer',
-                                            fontSize: '14px',
-                                            width: '100%'
-                                        }}
-                                    >
-                                        Clear Route
-                                    </button>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Display added places */}
-                        {intermediateCities.length > 0 && (
-                            <div>
-                                <h3 style={{ marginBottom: '10px', color: '#333', fontSize: '16px' }}>
-                                    Intermediate Stops ({intermediateCities.length}):
-                                </h3>
-                                <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                                    {intermediateCities.map((city, index) => (
-                                        <div
-                                            key={index}
-                                            style={{
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                padding: '8px 12px',
-                                                backgroundColor: 'white',
-                                                border: '1px solid #ddd',
-                                                borderRadius: '4px',
-                                                marginBottom: '5px'
-                                            }}
-                                        >
-                                            <span style={{ color: '#333', fontSize: '14px' }}>
-                                                {index + 1}. {city}
-                                            </span>
-                                            <button
-                                                onClick={() => removeCity(index)}
-                                                style={{
-                                                    backgroundColor: '#dc3545',
-                                                    color: 'white',
-                                                    border: 'none',
-                                                    borderRadius: '3px',
-                                                    padding: '4px 8px',
-                                                    cursor: 'pointer',
-                                                    fontSize: '12px'
-                                                }}
-                                                onMouseOver={(e) => e.target.style.backgroundColor = '#c82333'}
-                                                onMouseOut={(e) => e.target.style.backgroundColor = '#dc3545'}
-                                            >
-                                                Remove
-                                            </button>
-                                        </div>
-                                    ))}
+                
+                <div className="flex-grow overflow-y-auto">
+                    {selectedCity ? (
+                        <CityExplorationPanel
+                            city={selectedCity}
+                            onBack={() => setSelectedCity(null)}
+                            selectedPlaces={selectedPlacesPerCity[selectedCity] || []}
+                            onTogglePlace={handleTogglePlace}
+                            onOptimizeDay={handleOptimizeDayInCity}
+                        />
+                    ) : sidebarTab === 'route' ? (
+                        <div>
+                            <div className="space-y-4">
+                                <div>
+                                    <label htmlFor="start-input" className="block text-sm font-medium text-gray-700 mb-1">Starting Point:</label>
+                                    <input id="start-input" type="text" value={startPoint} onChange={(e) => setStartPoint(e.target.value)} placeholder="Enter starting location..." className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder:text-gray-500" />
+                                </div>
+                                <div>
+                                    <label htmlFor="end-input" className="block text-sm font-medium text-gray-700 mb-1">Ending Point:</label>
+                                    <input id="end-input" type="text" value={endPoint} onChange={(e) => setEndPoint(e.target.value)} placeholder="Enter destination..." className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder:text-gray-500" />
+                                </div>
+                                <div>
+                                    <label htmlFor="place-input" className="block text-sm font-medium text-gray-700 mb-1">Add Intermediate Stops:</label>
+                                    <form onSubmit={handleSubmit} className="flex gap-2">
+                                        <input id="place-input" type="text" value={inputValue} onChange={handleInputChange} placeholder="Add cities..." className="flex-grow px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder:text-gray-500" />
+                                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700">Add</button>
+                                    </form>
                                 </div>
                             </div>
-                        )}
-                    </>
-                )}
-                {sidebarTab === 'places' && (
-                    <div>
-                        <label htmlFor="vibe-input" style={{ display: 'block', marginBottom: 5, fontWeight: 'bold', color: '#555' }}>
-                            What kind of vibe are you looking for?
-                        </label>
-                        <input
-                            id="vibe-input"
-                            type="text"
-                            value={vibe}
-                            onChange={e => setVibe(e.target.value)}
-                            placeholder="e.g., adventurous, romantic, food lover…"
-                            autoComplete="on"
-                            style={{
-                                width: '100%',
-                                padding: '10px',
-                                border: '1px solid #ccc',
-                                borderRadius: '4px',
-                                fontFamily: 'Arial, sans-serif',
-                                color: 'black',
-                                fontSize: '14px',
-                                marginBottom: '10px'
-                            }}
-                        />
-                        <button
-                            onClick={async () => {
-                                setIsLoadingSuggestions(true);
-                                setSuggestedPlaces([]);
-                                try {
-                                    const res = await fetch('/api/suggestedPlaces', {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({
-                                            cities: [startPoint, ...intermediateCities, endPoint].filter(Boolean),
-                                            vibe
-                                        })
-                                    });
-                                    const data = await res.json();
-                                    setSuggestedPlaces(data);
-                                } catch (e) {
-                                    setSuggestedPlaces([]);
-                                }
-                                setIsLoadingSuggestions(false);
-                            }}
-                            disabled={!vibe.trim() || !startPoint || !endPoint}
-                            style={{
-                                backgroundColor: (!vibe.trim() || !startPoint || !endPoint) ? '#ccc' : '#007bff',
-                                color: 'white',
-                                padding: '10px 20px',
-                                border: 'none',
-                                borderRadius: '4px',
-                                cursor: (!vibe.trim() || !startPoint || !endPoint) ? 'not-allowed' : 'pointer',
-                                fontSize: '14px',
-                                width: '100%',
-                                marginBottom: 16
-                            }}
-                        >
-                            {isLoadingSuggestions ? 'Loading...' : 'Get Suggested Places'}
-                        </button>
-                        {suggestedPlaces.length > 0 && (
-                            <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-                                {suggestedPlaces.map((place, idx) => (
-                                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', background: 'white', border: '1px solid #ddd', borderRadius: 4, marginBottom: 8, padding: 10 }}>
-                                        <div style={{ fontWeight: 'bold', color: '#333' }}>{place.place} <span style={{ color: '#888', fontWeight: 'normal' }}>({place.city})</span></div>
-                                        <div style={{ color: '#555', fontSize: 13, marginBottom: 8 }}>{place.description}</div>
-                                        <button
-                                            onClick={() => {
-                                                setAddedPlaces([...addedPlaces, place]);
-                                                setIntermediateCities([...intermediateCities, place.place + ', ' + place.city]);
-                                            }}
-                                            style={{
-                                                backgroundColor: '#28a745',
-                                                color: 'white',
-                                                border: 'none',
-                                                borderRadius: 4,
-                                                padding: '6px 12px',
-                                                cursor: 'pointer',
-                                                fontSize: 13,
-                                                alignSelf: 'flex-end'
-                                            }}
-                                        >
-                                            Add to Route
-                                        </button>
-                                    </div>
-                                ))}
+
+                            <div className="mt-6 space-y-2">
+                                <button onClick={calculateOptimalRoute} disabled={isCalculating} className="w-full bg-green-600 text-white font-bold py-2 px-4 rounded-md hover:bg-green-700 disabled:bg-gray-400">
+                                    {isCalculating ? 'Calculating...' : 'Calculate Optimal Route'}
+                                </button>
                             </div>
-                        )}
-                    </div>
-                )}
+
+                            {intermediateCities.length > 0 && (
+                                <div className="mt-6">
+                                    <h3 className="text-lg font-semibold text-gray-800 mb-2">Intermediate Stops ({intermediateCities.length}):</h3>
+                                    <div className="space-y-2">
+                                        {intermediateCities.map((city, index) => (
+                                            <div key={index} className="flex justify-between items-center p-3 bg-white border border-gray-200 rounded-md">
+                                                <span className="text-gray-800">{index + 1}. {city}</span>
+                                                <button onClick={() => removeCity(index)} className="text-red-500 hover:text-red-700 text-sm font-semibold">Remove</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div>
+                            <p className="text-gray-600 mb-4">Calculate a route first to see cities and explore places.</p>
+                             <CityList cities={routeCities} selectedPlacesPerCity={selectedPlacesPerCity} onCitySelect={handleCitySelect} />
+                        </div>
+                       
+                    )}
+                </div>
+
+                <div className="flex-shrink-0 mt-4 pt-4 border-t border-gray-200">
+                    <button onClick={clearPlan} className="w-full bg-red-600 text-white font-bold py-2.5 px-4 rounded-md hover:bg-red-700">
+                        Clear & Reset Plan
+                    </button>
+                </div>
             </div>
 
-            {/* Map Section */}
-            <div style={{ flex: 1 }}>
-                <MyComponent />
+            <div className="flex-1">
+                <GoogleMap
+                    mapContainerClassName="w-full h-full"
+                    center={mapView.center}
+                    zoom={mapView.zoom}
+                    onLoad={onLoad}
+                    onUnmount={onUnmount}
+                    onDragEnd={handleMapStateChange}
+                    onZoomChanged={handleMapStateChange}
+                >
+                    {directions && (
+                        <DirectionsRenderer
+                            directions={directions}
+                            options={{
+                                polylineOptions: { strokeColor: '#FF0000', strokeWeight: 5 }
+                            }}
+                        />
+                    )}
+                    {Object.values(cityRoutes).map((route, index) => (
+                        <DirectionsRenderer
+                            key={index}
+                            directions={route}
+                            options={{
+                                polylineOptions: { strokeColor: '#0000FF', strokeWeight: 4, strokeOpacity: 0.8 },
+                                suppressMarkers: true, 
+                            }}
+                        />
+                    ))}
+                    {allPlacesWithLabels.map((place, index) => (
+                        <Marker
+                            key={`${place.place}-${index}`}
+                            position={{ lat: place.lat, lng: place.lng }}
+                            label={place.label}
+                            title={place.place}
+                        />
+                    ))}
+                </GoogleMap>
             </div>
         </div>
     );
