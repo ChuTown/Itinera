@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata = {
   title: "Itinera",
-  description: "SpurHacks Winner Winner Chicken Dinner",
+  description: "SpurHacks",
 };
 
 export default function RootLayout({ children }) {
