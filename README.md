@@ -1,4 +1,4 @@
-# Itinera
+# Itinera - [Devpost & Demo] -> (https://devpost.com/amaanomo?ref_content=user-portfolio&ref_feature=portfolio&ref_medium=global-nav)
 
 Itinera is a full-stack web application that helps travelers plan optimized multi-city routes and discover personalized places to visit. Users can select cities, input their travel preferences, and visualize routes and recommendations on an interactive map.
 
