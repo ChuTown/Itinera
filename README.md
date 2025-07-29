@@ -1,4 +1,4 @@
-# Itinera - [![Devpost](https://devpost.com/software/temp-jg764r)
+# Itinera - Devpost Submission: [![Devpost](https://img.shields.io/badge/Devpost-View-orange?logo=dev.to)](https://devpost.com/software/temp-jg764r)
 
 Itinera is a full-stack web application that helps travelers plan optimized multi-city routes and discover personalized places to visit. Users can select cities, input their travel preferences, and visualize routes and recommendations on an interactive map.
 
